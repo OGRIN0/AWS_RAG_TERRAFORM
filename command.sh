@@ -8,10 +8,10 @@ mkdir store-dir
 cd store-dir
 
 # Download the template ZIP file
-#wget https://www.free-css.com/as/do/e-store.zip - have to replace with website zip file
+#wget https://www. - have to replace with website zip file
 
 # Unzip the downloaded file
-#unzip e-store.zip
+#unzip folder.zip
 
 cd ecommerce-html-template
 

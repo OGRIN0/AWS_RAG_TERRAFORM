@@ -1,0 +1,67 @@
+import json
+import boto3
+import os
+
+WEBSOCKET_API_URL = "https://f0rz1snajg.execute-api.us-east-1.amazonaws.com/testing"
+
+bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+apigw = boto3.client("apigatewaymanagementapi", endpoint_url=WEBSOCKET_API_URL)
+
+def lambda_handler(event, context):
+    try:
+        print("Received event:", json.dumps(event))
+        
+        connection_id = event["requestContext"]["connectionId"]
+        route_key = event["requestContext"]["routeKey"]  
+
+        if route_key == "$connect":
+            print(f"New WebSocket connection: {connection_id}")
+            return {"statusCode": 200}
+
+        elif route_key == "$disconnect":
+            print(f"WebSocket disconnected: {connection_id}")
+            return {"statusCode": 200}
+
+        elif route_key == "SendMessage":
+            body = json.loads(event["body"])
+            user_input = body.get("message", "Hello!")
+
+            input_data = {
+                "modelId": "anthropic.claude-v2:1",
+                "contentType": "application/json",
+                "accept": "application/json",
+                "body": json.dumps({
+                    "prompt": f"\n\nHuman: {user_input}\n\nAssistant:",
+                    "max_tokens_to_sample": 300,
+                    "temperature": 0.5,
+                    "top_k": 250,
+                    "top_p": 1,
+                    "stop_sequences": ["\n\nHuman:"],
+                    "anthropic_version": "bedrock-2023-05-31"
+                })
+            }
+
+            response = bedrock.invoke_model_with_response_stream(
+                body=input_data['body'],
+                modelId=input_data['modelId'],
+                accept=input_data['accept'],
+                contentType=input_data['contentType']
+            )
+
+            for event_stream in response['body']:
+                chunk = json.loads(event_stream['chunk']['bytes'].decode('utf-8'))
+                if "completion" in chunk:
+                    apigw.post_to_connection(
+                        ConnectionId=connection_id,
+                        Data=json.dumps({"response": chunk["completion"]}).encode("utf-8")
+                    )
+            
+            return {"statusCode": 200}
+        
+        else:
+            print(f"Unknown route: {route_key}")
+            return {"statusCode": 400, "body": "Invalid route"}
+    
+    except Exception as e:
+        print("Error:", str(e))
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
